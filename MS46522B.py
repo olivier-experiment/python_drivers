@@ -65,7 +65,7 @@ class MS46522B(Instrument):
 
         self.add_parameter('sweeptype',
                            flags       = Instrument.FLAG_GETSET,
-                           option_list = ['LIN', 'LOG', 'POW', 'CW', 'POIN' , 'FSEG'],
+                           option_list = ['LIN', 'LOG', 'POW' , 'FSEGM','ISEGM','CW'],
                            type        = types.StringType)
 
         self.add_parameter('averagestatus',
@@ -138,8 +138,20 @@ class MS46522B(Instrument):
                            minval      = 0.1,
                            maxval      = 500e3,
                            type        = types.FloatType)
-
-        self.add_function('reset')
+						
+        self.add_parameter('CW_sweep_points',
+                            flags		= Instrument.FLAG_GETSET,
+                            units		= '',
+                            minval		= 1,
+                            maxval		= 20001,
+                            type		= types.FloatType)
+							
+        self.add_parameter('ext_trig_type',
+                           flags		= Instrument.FLAG_GETSET,
+                           option_list = ['ALL', 'POIN'],
+                           type        = types.StringType)						
+							
+	self.add_function('reset')
 
         if reset :
 
@@ -188,6 +200,8 @@ class MS46522B(Instrument):
         self.get_measBW()
         self.get_status()
         self.get_cwfrequency()
+        self.get_CW_sweep_points()
+        self.get_ext_trig_type()
 
 
 ################################################################################
@@ -561,7 +575,7 @@ class MS46522B(Instrument):
         logging.debug(__name__ +\
                       ' : The type of the sweep is set to %s' % sweeptype)
 
-        if sweeptype.upper() in ('LIN', 'LOG', 'POW', 'POIN','FSEG'):
+        if sweeptype.upper() in ('LIN', 'LOG', 'POW', 'ISEGM','FSEGM'):
             self._visainstrument.write('sens:swe:cw:state 0')
             self._visainstrument.write("SENS:SWE:TYPE "+str(sweeptype.upper()))
 
@@ -569,7 +583,7 @@ class MS46522B(Instrument):
             self._visainstrument.write("SENS:SWE:TYPE LIN") # default value...
             self._visainstrument.write('sens:swe:cw:state 1')
         else:
-            raise ValueError('set_sweeptype(): can only set LIN, LOG, POW, CW, POIN or FSEG')
+            raise ValueError('set_sweeptype(): can only set LIN, LOG, POW, CW, ISEGM or FSEGM')
 
     def do_get_sweeptype(self):
         '''
@@ -581,13 +595,54 @@ class MS46522B(Instrument):
         Output:
             sweeptype (string): LIN, LOG, POW, CW, POIN or FSEG
         '''
-        logging.debug(__name__ +' : Gets the type of the sweep ')
+
+        logging.debug(__name__ +\
+					   ' : Gets the type of the sweep ')
+
 
 
         if self._visainstrument.query('sens:swe:cw:state?') == '1':
             return 'CW'
         else:
-            return self._visainstrument.query("SENS:SWE:TYPE?")
+            return self._visainstrument.query('SENS:SWE:TYPE?')
+			
+			
+			
+    def do_set_CW_sweep_points(self, Number):
+        '''
+         Sets the CW sweep mode number of points.
+		 
+
+        Input:
+            The input parameter is a unitless number
+        Output:
+            None
+        '''
+        logging.debug(__name__ +\
+                      ' : The number of points for the CW sweep ')
+
+        if Number >=1 and Number <= 20001:
+            self._visainstrument.write("SENS:SWE:CW:POIN " + str(Number) )
+
+        else:
+            raise ValueError('set_CW_sweep_points(): can only set number of points between 1 and 20 001')				
+
+		
+    def do_get_CW_sweep_points(self):
+        '''
+         Gets the CW sweep mode number of points.
+		 Outputs the CW sweep mode number of points
+
+         Input:
+               NONE
+         Output:
+              Number of points of the CW sweep
+         '''
+        logging.debug(__name__ +\
+					   ' : Gets the number of points for the CW sweep  ')
+
+
+        return self._visainstrument.query('SENS:SWE:CW:POIN?')
 
 ##########################################################
     def averageclear(self):
@@ -628,7 +683,43 @@ class MS46522B(Instrument):
             self._visainstrument.write('sens:hold:func sing')
             self._visainstrument.write('TRIG:IMM')
         else:
-            raise ValueError('set_trigger(): can only set INT, EXT, MAN, IMM')
+            raise ValueError('set_trigger(): can only set INT, EXT, MAN, IMM'
+			
+    def do_set_ext_trig_type(self, ext_trigger_type='ALL'):
+        '''
+        The command sets the type of trigger 
+		that will be associated with the external trigger.
+
+        Input:
+            trigger_type (type): ALL, POIN
+        Output:
+            None
+        '''
+
+        logging.debug(__name__ +\
+                      ' : The mode of external trigger is ')
+
+        if ext_trigger_type.upper() in ('ALL', 'POIN'):
+            self._visainstrument.write("TRIG:EXT:TYP "+str(ext_trigger_type.upper()))
+
+        else:
+            raise ValueError('set_ext_trig_type(): must be ALL or POIN')
+
+    def do_get_ext_trig_type(self):
+        '''
+        The command gets the type of trigger 
+		that will be associated with the external trigger.
+
+        Input:
+            None
+        Output:
+            ALL or POIN
+        '''
+
+        logging.debug(__name__ +\
+                      ' : Gets the mode of external trigger')
+
+        return self._visainstrument.query("TRIG:EXT:TYP? ")
 
 ##########################################################
     def create_traces(self, traces, Sparams):
@@ -701,23 +792,25 @@ class MS46522B(Instrument):
         self.set_sweeptype('lin')
 
         # Trigger to immediate
-        self.set_trigger('imm')     # NOT DONE
+        self.set_trigger('IMM')     # NOT DONE
 
         # We create traces in memory
         self.create_traces(traces, Sparams)
 
         # No partial measurement
-        self.set_driving_mode('chopped')  # NOT DONE
+        # self.set_driving_mode('chopped')  # NOT DONE
+
 
         self.set_status('on')
 
     def initialize_two_tone_spectroscopy(self, traces, Sparams):
 
-        # We measure all points at the sae frequency
-        self.set_sweeptype('poin')
+        # We measure all points at the same frequency
+        self.set_sweeptype('CW')
 
         # Trigger to external since the vna will triggered by  another device
-        self.set_trigger('ext')
+        self.set_trigger('EXT')
+        self.set_ext_trig_type('POIN')
 
         # We create traces in memory
         self.create_traces(traces, Sparams)
@@ -801,12 +894,13 @@ class MS46522B(Instrument):
 
         while self._visainstrument.query('sens:hold:func?') == 'SING': #self._visainstrument.query('*ESR?') != '1':
             qt.msleep(0.1)
-            print 'wait for the end of the sweep measurement'
+            # print 'wait for the end of the sweep measurement'
+
         else:
 
             temp = []
             for trace in traces:
-                # print 'append'
+                # # print 'append'
 
                 temp.append(self.get_data(trace, data_format = data_format))
 
@@ -832,4 +926,3 @@ class MS46522B(Instrument):
         # self._visainstrument.write('INITiate1:IMMediate; *OPC')
         self._visainstrument.write('sens:hold:func sing')
         # self._visainstrument.write('TRIG:IMM')
-        print 'meas'
